@@ -87,3 +87,6 @@ php artisan migrate:fresh --seed
 ```
 
 Si tienes problemas con la conexión a la base de datos revisa las variables `DB_*` en tu `.env`.
+"# backend-CupFicct" 
+"# backend-CupFicct" 
+"# backend-CupFICCT" 
