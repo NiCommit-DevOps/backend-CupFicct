@@ -1,0 +1,157 @@
+# DOCUMENTO DE ESPECIFICACIÓN DE FUNCIONALIDADES: CICLO #2
+
+## 📌 1. Modulo_Registro
+
+### CU05 – Procesar Pago de Inscripción
+
+* **Prioridad:** Alta (Filtro de habilitación de postulantes)
+* **Descripción:** Registra las transacciones financieras asociadas al costo del derecho a examen, sirviendo como disparador lógico para la habilitación legal del estudiante en el proceso de asignación logística.
+* **Funcionalidades Específicas:**
+* **Procesamiento de Pasarela:** Capturar de forma segura la confirmación del pago mediante integraciones o validación administrativa manual, registrando el ID único emitido por la pasarela bancaria externa (`transaccion_id`).
+* **Firmado de Control Interno:** Almacenar un hash criptográfico de seguridad (`seguridad_hash`) que prevenga alteraciones maliciosas de montos en la base de datos.
+* **Mutación Automatizada de Estorage/logs/laravel.logstado:** Al confirmarse la transacción en estado `'APROBADO'`, un servicio del backend cambia el campo `estado_academico` de la inscripción de `'PENDIENTE'` a `'ELEGIBLE'` (apto para asignación de grupo).
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Escritura:** `Pago` (campos: `id_pago`, `id_inscripcion`, `fecha`, `monto`, `estado`, `metodo`, `transaccion_id`, `seguridad_hash`).
+* **Actualización:** `Inscripcion` (campo: `estado_academico` transita a `'ELEGIBLE'`).
+* **Regla de Consistencia:** El campo `transaccion_id` posee una restricción de unicidad (`UNIQUE`) para impedir que un mismo comprobante bancario sea procesado más de una vez.
+
+
+
+### CU14 – Cargar Usuarios por Lotes (Excel/CSV)
+
+* **Prioridad:** Alta (Apertura de operaciones masivas del Ciclo 2)
+* **Descripción:** Permite optimizar los tiempos de registro del sistema mediante el procesamiento asíncrono o por lotes de archivos planos externos, poblando masivamente las tablas de usuarios o postulantes sin saturar la memoria del servidor.
+* **Funcionalidades Específicas:**
+* **Carga e Ingesta de Archivos:** Interfaz para subir archivos en formatos `.xlsx` o `.csv`, validando que la estructura de columnas coincida con el mapeo requerido por el sistema.
+* **Procesamiento por Fragmentos (Chunks):** Implementación de trabajos en cola (*Queue Jobs*) en Laravel para leer el archivo en bloques (ej. de 100 en 100 registros), evitando el desbordamiento de memoria.
+* **Validación Previa e Informe de Errores:** Verificar duplicidad de C.I. o correos antes de insertar. Al finalizar, genera un reporte de registros exitosos y filas rechazadas con sus respectivos motivos.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Inserción Masiva:** `Usuario` y `Postulante` (creación de registros replicando la lógica transaccional dual del CU04).
+
+
+
+---
+
+## 📌 2. Modulo_Examenes
+
+### CU06 – Gestionar Evaluaciones
+
+* **Prioridad:** Muy Alta (Bloque crítico de entrada de calificaciones)
+* **Descripción:** Administra la captura formal de las calificaciones numéricas crudas obtenidas por los postulantes en cada materia evaluada, vinculándolas directamente a las reglas porcentuales de la convocatoria.
+* **Funcionalidades Específicas:**
+* **Grilla de Calificación para el Docente:** Interfaz optimizada tipo matriz para que el docente introduzca la nota de su materia a la lista de estudiantes asignados a su grupo.
+* **Validación Estricta de Rangos:** Control por software y restricciones de backend que impidan registrar notas fuera del rango cerrado de **0.00 a 100.00** puntos.
+* **Asentamiento de Notas Ponderadas:** Al guardar las notas por materia (`SubCalificacion`), el sistema inicializa o actualiza la cabecera del examen (`Evaluacion`) calculando de forma preliminar los avances del estudiante.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura:** `Inscripcion`, `Regla_Evaluacion`, `Materia_Grupo`.
+* **CRUD / Escritura:** `Evaluacion` (campos: `id_evaluacion`, `id_inscripcion`, `numero_examen`, `nota_final_calculada`, `fecha`), `SubCalificacion` (campos: `id_subcalificacion`, `id_evaluacion`, `id_regla_evaluacion`, `nota_materia_cruda`).
+* **Regla de Consistencia:** Restricciones físicas `CHECK` que validan que `numero_examen` esté entre 1 y 3, y que todas las notas numéricas se ubiquen estrictamente entre 0 y 100.
+
+
+
+### CU07 – Calcular Promedio y Estado Académico
+
+* **Prioridad:** Muy Alta (El núcleo algorítmico del negocio)
+* **Descripción:** Proceso procedural batch (por lotes) controlado por el Coordinador Académico que calcula la nota final definitiva ponderada de los postulantes y ejecuta el corte de selección en base a la disponibilidad real de cupos por carrera.
+* **Funcionalidades Específicas:**
+* **Cierre y Bloqueo de Actas:** Deshabilitar permanentemente la edición de notas en el `CU06` para la convocatoria seleccionada.
+* **Procesamiento de Notas Ponderadas:** Ejecutar el cálculo matemático aplicando a cada nota cruda (`nota_materia_cruda`) el valor porcentual estipulado en la tabla `Regla_Evaluacion`, consolidando el resultado en `Evaluacion.nota_final_calculada`.
+* **Algoritmo de Selección y Corte de Cupos:**
+* El sistema agrupa a los postulantes por carrera y los ordena de mayor a menor según su nota final calculada.
+* Asigna el estado `ADMITIDO` a los mejores promedios que tengan nota $\ge 51.00$, hasta agotar el límite estricto de plazas de la carrera.
+* A los postulantes con nota $\ge 51.00$ que quedaron fuera del límite por falta de plazas, les asigna `APROBADO_SIN_CUPO`. Al resto con notas inferiores a 51.00 les asigna `REPROBADO`.
+
+
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura:** `Regla_Evaluacion`, `SubCalificacion`, `Carrera` (para mapear los límites del negocio).
+* **Actualización Masiva:** `Evaluacion` (campo: `nota_final_calculada`), `Inscripcion` (campo: `estado_academico` muta de forma masiva a `'ADMITIDO'`, `'REPROBADO'` o `'APROBADO_SIN_CUPO'`).
+
+
+
+---
+
+## 📌 3. Modulo_Reportes
+
+### CU12 – Generar Reportes
+
+* **Prioridad:** Alta
+* **Descripción:** Motor de compilación encargado de configurar, formatear y exportar la información del rendimiento de los estudiantes en documentos oficiales estables e inalterables (PDF/Excel) requeridos por el Rectorado de la UAGRM.
+* **Funcionalidades Específicas:**
+* **Emisión de Actas Oficiales de Admitidos:** Generar listados ordenados por carrera que incluyan únicamente a los estudiantes cuyo estado académico sea `'ADMITIDO'`.
+* **Certificados Individuales de Calificación:** Permitir la descarga o impresión del desglose de notas obtenidas por un postulante específico para fines de reclamos o impugnaciones legítimas.
+* **Exportación de Padrón Académico:** Descargar en hojas de cálculo el universo completo de inscritos con sus notas finales consolidadas para auditorías académicas externas.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura de Solo Lectura (Views):** `Inscripcion`, `Postulante`, `Usuario`, `Carrera`, `Evaluacion`. No altera estados de la base de datos.
+
+
+
+### CU15 – Gestionar Reportes de Pagos
+
+* **Prioridad:** Alta
+* **Descripción:** Herramienta analítica de conciliación financiera que compila los ingresos económicos brutos recaudados por concepto de matrículas, cruzándolos contra los estados de las entidades bancarias y de las pasarelas virtuales.
+* **Funcionalidades Específicas:**
+* **Conciliación de Caja:** Listar los pagos agrupados por estado (`'APROBADO'`, `'PENDIENTE'`, `'RECHAZADO'`) y por el método de pago utilizado (Stripe, Transferencia, Ventanilla).
+* **Cálculo de Recaudación Total:** Computar sumatorias y promedios financieros aplicando filtros avanzados de rangos de fechas y convocatorias específicas para fines de fiscalización interna.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura:** `Pago` (filtros por `fecha`, `estado`, `metodo`), `Inscripcion`.
+
+
+
+### CU16 – Gestionar Historial Académico
+
+* **Prioridad:** Media
+* **Descripción:** Repositorio histórico de consultas de solo lectura que aísla los datos de las gestiones ya cerradas, sirviendo como archivo centralizado para la verificación permanente de registros antiguos de la facultad.
+* **Funcionalidades Específicas:**
+* **Buscador Indexado Multianual:** Permitir la búsqueda de notas de postulantes de años anteriores introduciendo su C.I. o el código de trámite histórico.
+* **Preservación del Histórico:** Garantizar que las consultas sobre convocatorias en estado `'CONCLUIDA'` se ejecuten de forma optimizada sin interferir en el rendimiento de los datos transaccionales de la convocatoria activa actual.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura:** `Gestion` (estado `'CERRADA'`), `Convocatoria` (estado `'CONCLUIDA'`), `Inscripcion`, `Evaluacion`.
+
+
+
+---
+
+## 📌 4. Modulo_Administrativo
+
+### CU13 – Visualizar Dashboard Administrativo
+
+* **Prioridad:** Media
+* **Descripción:** Interfaz gerencial gráfica e interactiva en tiempo real que recopila métricas clave de rendimiento (KPIs) sobre el estado global del proceso de admisión para la toma de decisiones del Decanato y la Coordinación.
+* **Funcionalidades Específicas:**
+* **Métricas de Rendimiento:** Desplegar tarjetas informativas con datos consolidados: Total Inscritos, Porcentaje de Aprobación, Tasa de Ausentismo y Total Recaudado en Bs.
+* **Gráficas de Demanda:** Renderizar gráficos de barras o pastel que ilustren las carreras más solicitadas y la distribución demográfica de procedencia de los bachilleres.
+* **Consultas de Agregación Optimizadas:** Emplear funciones de caché en Laravel para almacenar los resultados de las consultas pesadas (`COUNT`, `AVG`, `SUM`) y evitar la degradación de la base de datos ante accesos concurrentes.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Lectura Directa:** `Inscripcion`, `Postulante`, `Evaluacion`, `Pago`.
+
+
+
+### CU11 – Gestionar Bitácora
+
+* **Prioridad:** Alta (Seguridad transversal y auditoría forense)
+* **Descripción:** Mecanismo de control automatizado encargado de registrar de manera persistente e indeleble cualquier modificación o mutación de datos críticos dentro de la plataforma (especialmente en notas, cupos, pagos y accesos).
+* **Funcionalidades Específicas:**
+* **Captura de Estados (Antes/Después):** Guardar en formato estructurado `JSONB` el estado exacto del registro antes del cambio (`datos_anteriores`) y los nuevos valores guardados (`datos_nuevos`).
+* **Trazabilidad del Atacante/Operador:** Capturar de forma obligatoria el `id_usuario` responsable del cambio, la dirección `ip_origen` y el navegador o cliente web utilizado (`user_agent`).
+* **Visor de Auditoría Restringido:** Interfaz exclusiva para el Administrador global del sistema con filtros avanzados por tabla alterada, operación ejecutada (`INSERT`, `UPDATE`, `DELETE`) y marcas de tiempo cronológicas.
+
+
+* **Trazabilidad con la Base de Datos:**
+* **Inserción Automatizada (Laravel Observers / Triggers):** `Bitacora` (campos: `id_bitacora`, `tabla`, `operacion`, `datos_anteriores`, `datos_nuevos`, `id_usuario`, `ip_origen`, `user_agent`, `fecha`).
+* **Regla de Consistencia:** La tabla `Bitacora` es de **solo inserción y lectura**. No existen ni se exponen endpoints en la API para realizar modificaciones o eliminaciones (`UPDATE`/`DELETE`) sobre esta tabla bajo ninguna circunstancia, protegiendo la inmutabilidad de la auditoría.

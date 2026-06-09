@@ -1,0 +1,27 @@
+# No copiar dependencias ni secretos/locales al contexto de build.
+.git
+.gitignore
+.gitattributes
+vendor/
+node_modules/
+public/build/
+public/hot
+public/storage
+
+# Entornos locales (la config llega por variables de entorno de Railway).
+.env
+.env.*
+!.env.example
+
+# Cache/logs locales.
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*.php
+
+# Misc
+.phpunit.result.cache
+.phpunit.cache
+tests/
+README.md

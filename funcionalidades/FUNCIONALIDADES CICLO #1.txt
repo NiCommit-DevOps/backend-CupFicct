@@ -1,0 +1,323 @@
+﻿# DOCUMENTO DE ESPECIFICACIÓN DE FUNCIONALIDADES: CICLO #1
+
+## Formato de cada caso de uso
+1. **Título del CU**
+2. **Actor(es)**
+3. **Prioridad**
+4. **Descripción funcional**
+5. **Flujo principal**
+6. **Flujos alternos / excepciones**
+7. **Funcionalidades extras**
+8. **Tablas implicadas**
+9. **Dependencias y conexiones**
+
+---
+
+## 📌 1. Modulo_Acceso
+
+### CU03 – Gestionar Roles y Asignar Permisos
+* **Actor(es):** Superusuario, Administrador del sistema
+* **Prioridad:** Alta
+* **Descripción funcional:** Provee la interfaz y los endpoints para administrar los roles del sistema y asociar permisos a cada rol, permitiendo controlar qué acciones puede ejecutar cada usuario.
+
+#### Flujo principal
+1. El Superusuario solicita la lista de roles existentes.
+2. El sistema muestra roles con su descripción, estado y permisos asociados.
+3. El Superusuario crea o edita un rol con nombre único.
+4. El sistema presenta la matriz de permisos por módulo y permite seleccionar/desmarcar permisos.
+5. Al guardar, el backend actualiza las asociaciones en `Rol_Permiso`.
+
+#### Flujos alternos / excepciones
+* Si el nombre del rol ya existe, el backend devuelve error de unicidad.
+* Si se desactiva un rol en uso, se debe advertir antes de guardar y bloquear la acción si deja usuarios sin rol válido.
+
+#### Funcionalidades extras
+* Copia de rol existente para crear uno nuevo con permisos similares.
+* Vista de permisos efectivos de cada rol.
+* Exportar lista de roles y permisos a CSV.
+
+#### Tablas implicadas
+* Lectura: `Permiso` (`id_permiso`, `modulo`, `descripcion`)
+* CRUD/Escritura: `Rol` (`id_rol`, `nombre`, `descripcion`, `activo`), `Rol_Permiso` (`id_rol_permiso`, `id_rol`, `id_permiso`, `activo`)
+
+#### Dependencias y conexiones
+* Necesita el catálogo de permisos disponible para el módulo de acceso.
+* Las asignaciones de rol se usan en CU02 y en la verificación de autorización de todos los endpoints.
+* Si se elimina un rol, la integridad referencial debe mantener al menos roles válidos para usuarios activos.
+
+---
+
+### CU02 – Gestionar Usuarios y Asignar Roles
+* **Actor(es):** Superusuario, Administrador del sistema
+* **Prioridad:** Alta
+* **Descripción funcional:** Administra el ciclo de vida de los usuarios del sistema, incluyendo la creación, edición, asignación de roles y el bloqueo lógico de cuentas.
+
+#### Flujo principal
+1. El Superusuario despliega el listado de usuarios con filtros por CI, nombre, correo y rol.
+2. Crea un nuevo usuario ingresando datos personales y credenciales.
+3. Selecciona el rol base y guarda el usuario.
+4. El sistema valida unicidad de CI y correo, hashea la contraseña y crea la cuenta.
+5. El usuario puede editar su información, cambiar estado y reasignar roles.
+
+#### Flujos alternos / excepciones
+* Si CI o correo ya existen, se devuelve error y no se crea el usuario.
+* Si el rol asignado no existe o está inactivo, se rechaza la operación.
+* Si se desactiva el usuario, el sistema no borra datos y registra la fecha de baja lógica.
+
+#### Funcionalidades extras
+* Importación masiva de usuarios desde CSV.
+* Vista de permisos efectivos heredados por usuario.
+* Cierre forzado de sesiones activas al desactivar una cuenta.
+
+#### Tablas implicadas
+* Lectura: `Rol`
+* CRUD/Escritura: `Usuario` (`id_usuario`, `id_rol`, `ci`, `nombres`, `apellidos`, `correo`, `telefono1`, `telefono2`, `fecha_nacimiento`, `sexo`, `contrasena`, `EstaActivo`)
+
+#### Dependencias y conexiones
+* Depende de CU03 para tener roles definidos.
+* Su lógica impacta CU01 porque los usuarios inactivos no pueden autenticarse.
+* Debe coordinarse con perfiles especializados (`Docente`, `Postulante`) cuando existan extensiones al usuario base.
+
+---
+
+### CU01 – Gestionar Sesión
+* **Actor(es):** Todos los usuarios del sistema
+* **Prioridad:** Alta
+* **Descripción funcional:** Provee el acceso seguro al sistema mediante autenticación, validación de estado y emisión de tokens para el control de sesiones.
+
+#### Flujo principal
+1. El usuario ingresa sus credenciales (`correo` o `ci` + contraseña).
+2. El backend valida que el usuario exista y que `EstaActivo = true`.
+3. Se compara la contraseña con el hash almacenado.
+4. Si es correcta, se emite un token de sesión (JWT/Sanctum) con datos de usuario y permisos.
+5. El sistema guarda el registro de la sesión o la actividad de login.
+
+#### Flujos alternos / excepciones
+* Si el usuario no existe o está inactivo, devuelve HTTP `401` o `403`.
+* Si la contraseña es incorrecta, se registra el intento fallido y se muestra mensaje de error.
+* Si el token expira, el cliente debe solicitar reautenticación o refresh.
+
+#### Funcionalidades extras
+* Bloqueo temporal tras varios intentos fallidos.
+* Registro de actividad de inicio/cierre de sesión.
+* Refresh de token para mantener sesión sin pedir credenciales nuevamente.
+
+#### Tablas implicadas
+* Lectura/Autenticación: `Usuario`, `Rol`, `Rol_Permiso`, `Permiso`
+
+#### Dependencias y conexiones
+* Es la puerta de entrada de todo el sistema y depende de CU02 y CU03.
+* El servicio de sesión debe integrarse con el middleware de autorización que controla acceso a los demás módulos.
+
+---
+
+### CU18 – Configurar Perfil Personal
+* **Actor(es):** Todos los usuarios autenticados
+* **Prioridad:** Media
+* **Descripción funcional:** Permite que cada usuario edite su información personal y cambie su contraseña desde su propio perfil.
+
+#### Flujo principal
+1. El usuario solicita ver su perfil.
+2. El sistema carga los datos personales del usuario activo.
+3. El usuario modifica los campos permitidos (correo, teléfono, dirección, etc.).
+4. El usuario solicita cambio de contraseña ingresando la actual y la nueva.
+5. El sistema valida la contraseña actual y guarda el nuevo hash.
+
+#### Flujos alternos / excepciones
+* Si el correo ya está en uso por otro usuario, se rechaza la actualización.
+* Si la contraseña actual no coincide, se informa el error y no se modifica nada.
+
+#### Funcionalidades extras
+* Foto de perfil.
+* Visualización y cierre de sesiones activas.
+
+#### Tablas implicadas
+* Lectura/Actualización: `Usuario` (`correo`, `telefono1`, `telefono2`, `contrasena`)
+
+#### Dependencias y conexiones
+* Requiere sesión activa de CU01.
+* No altera otras funcionalidades, pero mantiene la coherencia de datos del usuario en todo el sistema.
+
+---
+
+## 📌 2. Modulo_Administrativo
+
+### CU19 – Gestionar Convocatoria
+* **Actor(es):** Superusuario administrativo
+* **Prioridad:** Muy Alta
+* **Descripción funcional:** Define los parámetros temporales de la convocatoria y controla estados para habilitar o bloquear procesos asociados a la admisión.
+
+#### Flujo principal
+1. El Superusuario crea una nueva gestión académica con nombre y fechas de inicio/fin.
+2. Se define una convocatoria asociada a esa gestión.
+3. El sistema guarda la convocatoria con estado inicial `ABIERTA`.
+4. Cambiar el estado de la convocatoria para habilitar o bloquear procesos de inscripción.
+
+#### Flujos alternos / excepciones
+* No se puede crear una nueva gestión activa si ya existe otra activa.
+* Si la convocatoria no está asociada a una gestión válida, se rechaza la operación.
+
+#### Funcionalidades extras
+* Control de fases para habilitar distintos subprocesos del ciclo de admisión.
+* Notificaciones internas cuando cambia el estado de la convocatoria.
+
+#### Tablas implicadas
+* Escritura/Actualización: `Gestion` (`id_gestion`, `nombre`, `fecha_inicio`, `fecha_fin`, `estado`), `Convocatoria` (`id_convocatoria`, `id_gestion`, `nombre`, `fecha_creacion`, `fecha_limite_inscripcion`, `estado`)
+
+#### Dependencias y conexiones
+* Es base para los procesos de registro de postulantes y generación de grupos.
+* Debe asegurarse de la existencia de una única gestión activa.
+
+---
+
+## 📌 3. Modulo_Examenes
+
+### CU08 – Gestionar Cupos por Carrera
+* **Actor(es):** Administrador académico, Superusuario
+* **Prioridad:** Alta
+* **Descripción funcional:** Registra la oferta académica y parametriza la cantidad de cupos disponibles por carrera para la convocatoria.
+
+#### Flujo principal
+1. El usuario crea o edita la oferta de una carrera.
+2. Define el número de cupos disponibles para la convocatoria actual.
+3. El sistema guarda la configuración y la expone para procesos de registro y asignación.
+
+#### Flujos alternos / excepciones
+* Si la carrera no existe, la operación se rechaza.
+* Si el número de cupos es negativo o nulo, el sistema valida y devuelve error.
+
+#### Funcionalidades extras
+* Gestión de modalidades y planes vigentes.
+* Historial de cupos por convocatoria.
+
+#### Tablas implicadas
+* CRUD/Escritura: `Carrera` (`id_carrera`, `nombre`, `modalidad`, `codigo`, `plan`, `area`)
+
+#### Dependencias y conexiones
+* La lógica de cupos alimenta la asignación de grupos y la evaluación de postulantes.
+* La tabla `Carrera` sirve como referencia para otros módulos de admisión.
+
+---
+
+## 📌 4. Modulo_Grupos
+
+### CU17 – Gestionar Aulas y Recursos Físicos
+* **Actor(es):** Administrador académico, Superusuario
+* **Prioridad:** Media
+* **Descripción funcional:** Mantiene el catálogo de aulas y recursos físicos necesarios para programar el examen presencial.
+
+#### Flujo principal
+1. Crear o editar un aula con nombre, capacidad y ubicación.
+2. Validar que la capacidad sea mayor que cero.
+3. Guardar el aula en el sistema.
+
+#### Flujos alternos / excepciones
+* Si la capacidad es inválida, la operación se rechaza.
+* Si el nombre del aula ya existe, se genera un error de unicidad.
+
+#### Funcionalidades extras
+* Vinculación con mapas o planos físicos.
+* Etiquetas de tipo de aula (laboratorio, teoría, sala multiuso).
+
+#### Tablas implicadas
+* CRUD/Escritura: `Aula` (`id_aula`, `nombre`, `capacidad`, `ubicacion`)
+
+#### Dependencias y conexiones
+* Los grupos y la asignación de postulantes necesitan aulas definidas.
+* Sirve de referencia para la capacidad máxima de los grupos de examen.
+
+---
+
+### CU10 – Gestionar Docentes y Horarios
+* **Actor(es):** Administrador académico, Superusuario
+* **Prioridad:** Media
+* **Descripción funcional:** Administra la información del plantel docente y su relación con áreas de conocimiento.
+
+#### Flujo principal
+1. Registrar o editar el perfil del docente.
+2. Asociar al docente con uno o varios bloques temáticos (áreas).
+3. Guardar la información profesional y de carga horaria.
+
+#### Flujos alternos / excepciones
+* No se puede crear un docente sin un usuario base existente.
+* Si el área no existe, se rechaza la asociación.
+
+#### Funcionalidades extras
+* Gestión de carga horaria semanal.
+* Preferencias de disponibilidad para asignaciones de grupos.
+
+#### Tablas implicadas
+* CRUD/Escritura: `Docente` (`id_docente`, `profesion`, `carga_horaria`, `especialidad`, `tiene_maestria`, `tiene_diplomado`)
+* CRUD/Escritura: `Area` (`id_area`, `nombre`, `descripcion`)
+* CRUD/Escritura: `Area_Docente` (`id_area_docente`, `id_area`, `id_docente`)
+
+#### Dependencias y conexiones
+* Requiere que exista la tabla `Usuario` y su entidad base.
+* Es importante para asignaciones de evaluadores y guardias académicas.
+
+---
+
+## 📌 5. Modulo_Registro
+
+### CU04 – Gestionar Postulantes
+* **Actor(es):** Administrador de registro, Superusuario
+* **Prioridad:** Alta
+* **Descripción funcional:** Administra la creación de postulantes y su inscripción inicial en la convocatoria.
+
+#### Flujo principal
+1. Crear un postulante con datos personales y de contacto.
+2. Crear el usuario digital asociado con rol `Postulante`.
+3. Generar el `codigo_tramite` de forma única.
+4. Registrar la inscripción en la convocatoria activa con estado `PENDIENTE`.
+
+#### Flujos alternos / excepciones
+* Si el postulante ya existe, se bloquea la duplicación.
+* Si no hay convocatoria activa, no se permite la inscripción.
+
+#### Funcionalidades extras
+* Registro con generación automática de documento de inscripción.
+* Envío de confirmación por correo electrónico.
+
+#### Tablas implicadas
+* Lectura: `Unidad_Educativa`, `Convocatoria`, `Carrera`
+* Escritura transaccional: `Usuario`, `Postulante` (`id_postulante`, `id_unidad`, `codigo_tramite`, `procedencia`, `titulo_bachiller`, `anio_egreso`), `Inscripcion` (`id_inscripcion`, `id_postulante`, `id_grupo`, `id_convocatoria`, `turno_preferencia`, `fecha_inscripcion`, `estado_academico`), `Carrera_Inscripcion` (`id_carrera_inscripcion`, `id_carrera`, `id_inscripcion`)
+
+#### Dependencias y conexiones
+* Depende de CU19 para la existencia de una convocatoria activa.
+* Requiere la creación del usuario principal y su rol.
+* Alimenta los procesos de asignación de grupos en CU09.
+
+---
+
+## 📌 6. Modulo_Grupos (Cierre Logístico del Ciclo 1)
+
+### CU09 – Gestionar Asignación de Grupos
+* **Actor(es):** Administrador académico, Superusuario
+* **Prioridad:** Alta
+* **Descripción funcional:** Asigna a los postulantes habilitados a grupos de examen respetando la capacidad de los grupos y las aulas.
+
+#### Flujo principal
+1. Definir los grupos de examen con sigla, turno y capacidad máxima.
+2. Seleccionar postulantes con estado `ELEGIBLE`.
+3. Asignar a cada postulante un grupo disponible.
+4. Guardar las actualizaciones en `Inscripcion`.
+
+#### Flujos alternos / excepciones
+* Si el grupo está lleno, se bloquea la asignación.
+* Si la capacidad del aula es menor que la del grupo, se advierte y se rechaza la operación.
+
+#### Funcionalidades extras
+* Asignación automática en lote.
+* Rebalanceo de grupos cuando cambia la capacidad.
+
+#### Tablas implicadas
+* CRUD/Escritura: `Grupo` (`id_grupo`, `sigla`, `nombre`, `turno`, `capacidad_max`)
+* Lectura: `Materia_Grupo`, `Aula`
+* Actualización por lote: `Inscripcion` (`id_grupo`)
+
+#### Dependencias y conexiones
+* Necesita aulas definidas en CU17.
+* Depende de cupos configurados en CU08.
+* Se apoya en los postulantes creados en CU04.
+
+---
