@@ -1,15 +1,12 @@
 # syntax=docker/dockerfile:1
 # CUP FICCT — Backend (Laravel 12 / PHP 8.2) para Railway.
-FROM php:8.2-apache
+FROM php:8.2-cli
 
 # --- Dependencias del sistema y extensiones PHP (PostgreSQL incluido) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git unzip libpq-dev libzip-dev libonig-dev \
     && docker-php-ext-install pdo pdo_pgsql pgsql mbstring bcmath zip opcache \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Apache: habilita rewrite (necesario para el .htaccess de Laravel).
-RUN a2enmod rewrite
 
 # Composer (desde la imagen oficial).
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -26,12 +23,9 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-di
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
-# Entrypoint: configura el puerto dinámico, migra/seedea y arranca Apache.
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint
-RUN chmod +x /usr/local/bin/entrypoint
-
 # Railway inyecta $PORT; usamos 8080 como valor por defecto local.
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["entrypoint"]
+# Arranca Laravel en el puerto que Railway espera.
+CMD php artisan serve --host=0.0.0.0 --port=${PORT}
