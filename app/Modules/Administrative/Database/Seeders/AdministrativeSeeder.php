@@ -4,8 +4,6 @@ namespace App\Modules\Administrative\Database\Seeders;
 
 use App\Modules\Access\Models\Permiso;
 use App\Modules\Access\Models\Rol;
-use App\Modules\Administrative\Models\Convocatoria;
-use App\Modules\Administrative\Models\Gestion;
 use Illuminate\Database\Seeder;
 
 class AdministrativeSeeder extends Seeder
@@ -47,26 +45,7 @@ class AdministrativeSeeder extends Seeder
             $coordinador->permisos()->syncWithoutDetaching($idDashboard);
         }
 
-        // Gestión activa + convocatoria abierta por defecto, para habilitar el
-        // registro de postulantes (CU04) de inmediato.
-        $anio = (int) date('Y');
-
-        $gestion = Gestion::firstOrCreate(
-            ['nombre' => "Gestión {$anio}"],
-            [
-                'fecha_inicio' => "{$anio}-01-01",
-                'fecha_fin' => "{$anio}-12-31",
-                'estado' => Gestion::ESTADO_ACTIVA,
-            ]
-        );
-
-        Convocatoria::firstOrCreate(
-            ['id_gestion' => $gestion->id_gestion, 'nombre' => "Primer PSA {$anio}"],
-            [
-                'fecha_creacion' => now()->toDateString(),
-                'fecha_limite_inscripcion' => "{$anio}-12-31",
-                'estado' => Convocatoria::ESTADO_ABIERTA,
-            ]
-        );
+        // No se crean gestiones ni convocatorias por defecto: el sistema queda
+        // limpio y el administrador las da de alta manualmente (CU19).
     }
 }
