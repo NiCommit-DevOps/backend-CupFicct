@@ -50,6 +50,9 @@ Route::middleware('auth:api')->group(function () {
         Route::get('reportes/lista', [ReporteController::class, 'lista']);
         Route::get('reportes/estadisticas', [ReporteController::class, 'estadisticas']);
         Route::get('reportes/docentes-grupos', [ReporteController::class, 'docentesPorGrupo']);
+        // CU12 — Rendimiento académico comparado entre gestiones.
+        Route::get('reportes/comparativa-gestiones', [ReporteController::class, 'comparativaGestiones']);
+        Route::get('reportes/comparativa-gestiones/csv', [ReporteController::class, 'comparativaGestionesCsv']);
     });
 
     // CU07 — Corte de admisión por cupos.

@@ -29,12 +29,12 @@ class ReporteController extends Controller
         $filas = [];
         foreach ($acta['por_carrera'] as $grupo) {
             foreach ($grupo['admitidos'] as $a) {
-                $filas[] = [$grupo['carrera'], $a['codigo_tramite'], $a['ci'], $a['apellidos'], $a['nombres'], $a['promedio_final']];
+                $filas[] = [$grupo['carrera'], $a['codigo_tramite'], $a['ci'], $a['apellidos'], $a['nombres'], $a['promedio_final'], $a['preferencia']];
             }
         }
 
         return $this->csv('acta_admitidos.csv',
-            ['Carrera', 'Código', 'CI', 'Apellidos', 'Nombres', 'Promedio'],
+            ['Carrera', 'Código', 'CI', 'Apellidos', 'Nombres', 'Promedio', 'Preferencia'],
             $filas,
         );
     }
@@ -85,10 +85,29 @@ class ReporteController extends Controller
         return response()->json($this->reportes->estadisticas($this->convocatoria($request)));
     }
 
-    /** Docentes por grupos (con cupo ocupado y aprobados). */
+    /** Docentes por grupos (cupo, aprobados, %) + ranking de docentes por % aprobados. */
     public function docentesPorGrupo(): JsonResponse
     {
         return response()->json(['data' => $this->reportes->docentesPorGrupo()]);
+    }
+
+    /** Rendimiento académico comparado entre gestiones. */
+    public function comparativaGestiones(): JsonResponse
+    {
+        return response()->json(['data' => $this->reportes->comparativaGestiones()]);
+    }
+
+    public function comparativaGestionesCsv(): StreamedResponse
+    {
+        $filas = array_map(fn ($g) => [
+            $g['gestion'], $g['total_inscritos'], $g['con_nota'], $g['aprobados'],
+            $g['reprobados'], $g['admitidos'], $g['promedio_general'], $g['porcentaje_aprobacion'],
+        ], $this->reportes->comparativaGestiones());
+
+        return $this->csv('comparativa_gestiones.csv',
+            ['Gestión', 'Inscritos', 'Con nota', 'Aprobados', 'Reprobados', 'Admitidos', 'Promedio general', '% aprobación'],
+            $filas,
+        );
     }
 
     /* ===================== Internos ===================== */

@@ -4,6 +4,7 @@ namespace App\Modules\Exams\Services;
 
 use App\Modules\Academics\Models\Grupo;
 use App\Modules\Administrative\Models\Convocatoria;
+use App\Modules\Administrative\Models\Gestion;
 use App\Modules\Registration\Models\Inscripcion;
 use Illuminate\Support\Facades\DB;
 
@@ -13,28 +14,48 @@ use Illuminate\Support\Facades\DB;
  */
 class ReporteService
 {
-    /** Acta oficial de admitidos, agrupada y ordenada por carrera. */
+    /**
+     * Acta oficial de admitidos, agrupada por carrera. Cada admitido indica si
+     * entró a su 1ª o 2ª preferencia (según los cupos del corte de admisión).
+     */
     public function actaAdmitidos(int $idConvocatoria): array
     {
         $convocatoria = $this->convocatoria($idConvocatoria);
 
         $admitidos = Inscripcion::where('id_convocatoria', $idConvocatoria)
             ->where('estado_academico', Inscripcion::ESTADO_ADMITIDO)
-            ->with(['postulante.usuario', 'carreraAdmitida'])
+            ->with(['postulante.usuario', 'carreraAdmitida', 'carreras'])
             ->orderByDesc('promedio_final')
             ->get();
+
+        $resumen = ['primera' => 0, 'segunda' => 0, 'otra' => 0];
+
+        $mapAdmitido = function (Inscripcion $i) use (&$resumen) {
+            $orden = $this->ordenPreferenciaAdmitida($i);
+            if ($orden === 1) {
+                $resumen['primera']++;
+            } elseif ($orden === 2) {
+                $resumen['segunda']++;
+            } else {
+                $resumen['otra']++;
+            }
+
+            return [
+                'codigo_tramite' => $i->postulante?->codigo_tramite,
+                'ci' => $i->postulante?->usuario?->ci,
+                'nombres' => $i->postulante?->usuario?->nombres,
+                'apellidos' => $i->postulante?->usuario?->apellidos,
+                'promedio_final' => $i->promedio_final !== null ? (float) $i->promedio_final : null,
+                'preferencia_orden' => $orden,
+                'preferencia' => $orden === 1 ? '1ª' : ($orden === 2 ? '2ª' : '—'),
+            ];
+        };
 
         $porCarrera = $admitidos
             ->groupBy(fn (Inscripcion $i) => $i->carreraAdmitida?->nombre ?? 'Sin carrera')
             ->map(fn ($grupo, $carrera) => [
                 'carrera' => $carrera,
-                'admitidos' => $grupo->map(fn (Inscripcion $i) => [
-                    'codigo_tramite' => $i->postulante?->codigo_tramite,
-                    'ci' => $i->postulante?->usuario?->ci,
-                    'nombres' => $i->postulante?->usuario?->nombres,
-                    'apellidos' => $i->postulante?->usuario?->apellidos,
-                    'promedio_final' => $i->promedio_final !== null ? (float) $i->promedio_final : null,
-                ])->values(),
+                'admitidos' => $grupo->map($mapAdmitido)->values(),
             ])
             ->sortKeys()
             ->values();
@@ -43,8 +64,25 @@ class ReporteService
             'convocatoria' => $convocatoria->nombre,
             'gestion' => $convocatoria->gestion?->nombre,
             'total' => $admitidos->count(),
+            'resumen' => $resumen,
             'por_carrera' => $porCarrera,
         ];
+    }
+
+    /**
+     * Posición (1 = 1ª, 2 = 2ª) de la carrera admitida dentro de las preferencias
+     * del postulante; null si no coincide.
+     */
+    private function ordenPreferenciaAdmitida(Inscripcion $i): ?int
+    {
+        if ($i->id_carrera_admitida === null) {
+            return null;
+        }
+
+        $ordenadas = $i->carreras->sortBy(fn ($c) => $c->pivot->orden ?? 1)->values();
+        $idx = $ordenadas->search(fn ($c) => (int) $c->id_carrera === (int) $i->id_carrera_admitida);
+
+        return $idx === false ? null : $idx + 1;
     }
 
     /** Padrón académico: todos los inscritos con sus notas consolidadas. */
@@ -156,27 +194,47 @@ class ReporteService
     }
 
     /**
-     * Reporte "Docentes por grupos": cada grupo (de la convocatoria activa) con
-     * sus docentes asignados, el cupo ocupado y la cantidad de aprobados.
+     * Reporte "Docentes por grupos" (convocatoria activa): cada grupo con sus
+     * docentes, cupo ocupado, aprobados y % de aprobación; más un ranking de
+     * docentes por % de aprobados (agregando sus grupos), encabezado por el
+     * docente con mayor porcentaje.
+     *
+     * @return array{grupos:array,ranking:array}
      */
     public function docentesPorGrupo(): array
     {
         $idConvocatoria = Convocatoria::activa()?->id_convocatoria;
         if (! $idConvocatoria) {
-            return [];
+            return ['grupos' => [], 'ranking' => []];
         }
 
         $aprobados = [Inscripcion::ESTADO_APROBADO, Inscripcion::ESTADO_ADMITIDO, Inscripcion::ESTADO_APROBADO_SIN_CUPO];
 
-        return Grupo::query()
+        $acumulado = [];
+
+        $grupos = Grupo::query()
             ->where('id_convocatoria', $idConvocatoria)
             ->with(['docentes.usuario'])
             ->orderBy('sigla')
             ->get()
-            ->map(function (Grupo $g) use ($aprobados) {
+            ->map(function (Grupo $g) use ($aprobados, &$acumulado) {
                 $inscritos = Inscripcion::where('id_grupo', $g->id_grupo)->count();
                 $aprob = Inscripcion::where('id_grupo', $g->id_grupo)
                     ->whereIn('estado_academico', $aprobados)->count();
+
+                foreach ($g->docentes as $d) {
+                    $acumulado[$d->id_docente] ??= [
+                        'id_docente' => $d->id_docente,
+                        'nombre' => trim(($d->usuario?->nombres ?? '').' '.($d->usuario?->apellidos ?? '')),
+                        'profesion' => $d->profesion,
+                        'inscritos' => 0,
+                        'aprobados' => 0,
+                        'grupos' => [],
+                    ];
+                    $acumulado[$d->id_docente]['inscritos'] += $inscritos;
+                    $acumulado[$d->id_docente]['aprobados'] += $aprob;
+                    $acumulado[$d->id_docente]['grupos'][] = $g->sigla;
+                }
 
                 return [
                     'id_grupo' => $g->id_grupo,
@@ -185,11 +243,58 @@ class ReporteService
                     'turno' => $g->turno,
                     'inscritos' => $inscritos,
                     'aprobados' => $aprob,
+                    'porcentaje' => $inscritos > 0 ? round($aprob / $inscritos * 100, 1) : 0.0,
                     'docentes' => $g->docentes->map(fn ($d) => [
                         'id_docente' => $d->id_docente,
                         'nombre' => trim(($d->usuario?->nombres ?? '').' '.($d->usuario?->apellidos ?? '')),
                         'profesion' => $d->profesion,
                     ])->values(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $ranking = collect($acumulado)
+            ->map(function ($r) {
+                $r['porcentaje'] = $r['inscritos'] > 0 ? round($r['aprobados'] / $r['inscritos'] * 100, 1) : 0.0;
+                $r['grupos'] = implode(', ', array_values(array_unique($r['grupos'])));
+
+                return $r;
+            })
+            ->sortByDesc(fn ($r) => [$r['porcentaje'], $r['aprobados']])
+            ->values()
+            ->all();
+
+        return ['grupos' => $grupos, 'ranking' => $ranking];
+    }
+
+    /**
+     * CU12 — Rendimiento académico ENTRE gestiones: por cada gestión, métricas
+     * agregadas de todas sus convocatorias (inscritos, aprobados, reprobados,
+     * admitidos, promedio general y % de aprobación) para compararlas.
+     */
+    public function comparativaGestiones(): array
+    {
+        $aprobados = [Inscripcion::ESTADO_APROBADO, Inscripcion::ESTADO_ADMITIDO, Inscripcion::ESTADO_APROBADO_SIN_CUPO];
+
+        return Gestion::orderBy('fecha_inicio')->orderBy('nombre')->get()
+            ->map(function (Gestion $g) use ($aprobados) {
+                $base = Inscripcion::whereHas('convocatoria', fn ($q) => $q->where('id_gestion', $g->id_gestion));
+
+                $conNota = (clone $base)->whereNotNull('promedio_final');
+                $totalConNota = (clone $conNota)->count();
+                $aprob = (clone $base)->whereIn('estado_academico', $aprobados)->count();
+
+                return [
+                    'id_gestion' => $g->id_gestion,
+                    'gestion' => $g->nombre,
+                    'total_inscritos' => (clone $base)->count(),
+                    'con_nota' => $totalConNota,
+                    'aprobados' => $aprob,
+                    'reprobados' => (clone $base)->where('estado_academico', Inscripcion::ESTADO_REPROBADO)->count(),
+                    'admitidos' => (clone $base)->where('estado_academico', Inscripcion::ESTADO_ADMITIDO)->count(),
+                    'promedio_general' => round((float) (clone $conNota)->avg('promedio_final'), 2),
+                    'porcentaje_aprobacion' => $totalConNota > 0 ? round($aprob / $totalConNota * 100, 1) : 0.0,
                 ];
             })
             ->values()
