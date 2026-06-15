@@ -18,24 +18,28 @@ class DocenteResource extends JsonResource
             'tiene_maestria' => $this->tiene_maestria,
             'tiene_diplomado' => $this->tiene_diplomado,
             'usuario' => new UsuarioResource($this->whenLoaded('usuario')),
-            // Contratación agrupada por carrera: cada carrera con sus materias (áreas).
-            'asignaciones' => $this->whenLoaded('asignaciones', fn () => $this->asignaciones
-                ->groupBy('id_carrera')
-                ->map(fn ($filas) => [
-                    'id_carrera' => (int) $filas->first()->id_carrera,
-                    'carrera' => $filas->first()->carrera?->nombre,
-                    'materias' => $filas->map(fn ($f) => [
+            // Carreras del docente (texto libre) con sus áreas (materias).
+            'carreras' => $this->whenLoaded('carreraAreas', fn () => $this->carreraAreas
+                ->groupBy('carrera')
+                ->map(fn ($filas, $carrera) => [
+                    'carrera' => (string) $carrera,
+                    'areas' => $filas->map(fn ($f) => [
                         'id_materia' => (int) $f->id_materia,
                         'nombre' => $f->materia?->nombre,
                     ])->values(),
                 ])->values()),
-            // Lista plana de materias distintas (para tabla/resumen).
-            'materias' => $this->whenLoaded('asignaciones', fn () => $this->asignaciones
+            // Unión de áreas: lo que el docente puede enseñar.
+            'areas' => $this->whenLoaded('carreraAreas', fn () => $this->carreraAreas
                 ->unique('id_materia')
                 ->map(fn ($f) => [
                     'id_materia' => (int) $f->id_materia,
                     'nombre' => $f->materia?->nombre,
                 ])->values()),
+            // Materias que el docente desea/va a enseñar (⊆ unión de áreas).
+            'materias' => $this->whenLoaded('materias', fn () => $this->materias->map(fn ($m) => [
+                'id_materia' => (int) $m->id_materia,
+                'nombre' => $m->nombre,
+            ])->values()),
             'convocatorias' => $this->whenLoaded('convocatorias', fn () => $this->convocatorias->map(fn ($c) => [
                 'id_convocatoria' => $c->id_convocatoria,
                 'nombre' => $c->nombre,

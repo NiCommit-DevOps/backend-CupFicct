@@ -68,7 +68,8 @@ class DocenteService
                 Arr::only($data, self::CAMPOS_DOCENTE),
             );
 
-            $this->sincronizarAsignaciones($docente, $data['asignaciones'] ?? []);
+            $this->sincronizarCarreraAreas($docente, $data['carreras'] ?? []);
+            $docente->materias()->sync($data['materias'] ?? []);
             $docente->convocatorias()->sync($data['convocatorias'] ?? []);
             $this->sincronizarGrupos($docente, $data['grupos'] ?? []);
 
@@ -77,33 +78,38 @@ class DocenteService
     }
 
     /**
-     * CU10 — Re-sincroniza la contratación del docente: por cada carrera, las
-     * materias (áreas) que dicta. Guarda la tripleta docente–carrera–materia.
+     * CU10 — Re-sincroniza las carreras del docente (texto libre) y, por cada
+     * una, las áreas (materias) en las que es profesional.
      *
-     * @param  array<int,array{id_carrera?:mixed,materias?:array}>  $asignaciones
+     * @param  array<int,array{carrera?:mixed,areas?:array}>  $carreras
      */
-    private function sincronizarAsignaciones(Docente $docente, array $asignaciones): void
+    private function sincronizarCarreraAreas(Docente $docente, array $carreras): void
     {
-        DB::table('docente_carrera_materia')->where('id_docente', $docente->id_docente)->delete();
+        DB::table('docente_carrera_area')->where('id_docente', $docente->id_docente)->delete();
 
         $filas = [];
-        foreach ($asignaciones as $asignacion) {
-            $idCarrera = (int) ($asignacion['id_carrera'] ?? 0);
-            if ($idCarrera <= 0) {
+        $vistos = [];
+        foreach ($carreras as $bloque) {
+            $nombre = trim((string) ($bloque['carrera'] ?? ''));
+            if ($nombre === '') {
                 continue;
             }
-            $materias = array_unique(array_map('intval', $asignacion['materias'] ?? []));
-            foreach ($materias as $idMateria) {
+            foreach (array_unique(array_map('intval', $bloque['areas'] ?? [])) as $idMateria) {
+                $clave = mb_strtolower($nombre).'|'.$idMateria;
+                if (isset($vistos[$clave])) {
+                    continue;
+                }
+                $vistos[$clave] = true;
                 $filas[] = [
                     'id_docente' => $docente->id_docente,
-                    'id_carrera' => $idCarrera,
+                    'carrera' => $nombre,
                     'id_materia' => $idMateria,
                 ];
             }
         }
 
         if ($filas !== []) {
-            DB::table('docente_carrera_materia')->insert($filas);
+            DB::table('docente_carrera_area')->insert($filas);
         }
     }
 
@@ -156,8 +162,12 @@ class DocenteService
             $docente->fill(Arr::only($data, self::CAMPOS_DOCENTE));
             $docente->save();
 
-            if (array_key_exists('asignaciones', $data)) {
-                $this->sincronizarAsignaciones($docente, $data['asignaciones'] ?? []);
+            if (array_key_exists('carreras', $data)) {
+                $this->sincronizarCarreraAreas($docente, $data['carreras'] ?? []);
+            }
+
+            if (array_key_exists('materias', $data)) {
+                $docente->materias()->sync($data['materias'] ?? []);
             }
 
             if (array_key_exists('convocatorias', $data)) {
