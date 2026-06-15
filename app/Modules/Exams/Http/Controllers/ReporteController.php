@@ -71,12 +71,22 @@ class ReporteController extends Controller
     /** Lista general / aprobados / reprobados según el filtro. */
     public function lista(Request $request): JsonResponse
     {
-        $filtro = $request->string('filtro')->toString() ?: 'todos';
-        if (! in_array($filtro, ['todos', 'aprobados', 'reprobados'], true)) {
-            $filtro = 'todos';
-        }
+        return response()->json($this->reportes->lista($this->convocatoria($request), $this->filtroLista($request)));
+    }
 
-        return response()->json($this->reportes->lista($this->convocatoria($request), $filtro));
+    public function listaCsv(Request $request): StreamedResponse
+    {
+        $lista = $this->reportes->lista($this->convocatoria($request), $this->filtroLista($request));
+
+        $filas = array_map(fn ($f) => [
+            $f['codigo_tramite'], $f['ci'], $f['apellidos'], $f['nombres'],
+            $f['carrera_1'], $f['promedio_final'], $f['estado_academico'],
+        ], $lista['filas']);
+
+        return $this->csv('lista_postulantes.csv',
+            ['Código', 'CI', 'Apellidos', 'Nombres', 'Carrera 1', 'Promedio', 'Estado'],
+            $filas,
+        );
     }
 
     /** Promedios generales, estadísticas por materia y grupos con más aprobados. */
@@ -85,10 +95,60 @@ class ReporteController extends Controller
         return response()->json($this->reportes->estadisticas($this->convocatoria($request)));
     }
 
+    public function estadisticasCsv(Request $request): StreamedResponse
+    {
+        $e = $this->reportes->estadisticas($this->convocatoria($request));
+        $gh = $e['grupos_habilitados'];
+        $pg = $e['promedios_generales'];
+
+        $filas = [
+            ['Estadísticas', $e['gestion'] ?? '', $e['convocatoria']],
+            [],
+            ['Grupos habilitados', 'Total', 'Mañana', 'Tarde'],
+            ['', $gh['total'], $gh['manana'], $gh['tarde']],
+            [],
+            ['Promedios generales'],
+            ['Con nota', $pg['total_con_nota']],
+            ['Promedio general', $pg['promedio_general']],
+            ['Promedio máximo', $pg['promedio_maximo']],
+            ['Promedio mínimo', $pg['promedio_minimo']],
+            ['Aprobados', $pg['aprobados']],
+            ['Reprobados', $pg['reprobados']],
+            [],
+            ['Por materia', 'Notas registradas', 'Promedio', 'Aprobadas', '% aprobación'],
+        ];
+        foreach ($e['por_materia'] as $m) {
+            $filas[] = [$m['materia'], $m['registradas'], $m['promedio'], $m['aprobadas'], $m['porcentaje_aprobacion']];
+        }
+        $filas[] = [];
+        $filas[] = ['Grupos por aprobados', 'Inscritos', 'Aprobados'];
+        foreach ($e['grupos_top_aprobados'] as $g) {
+            $filas[] = [$g['sigla'].' · '.$g['nombre'], $g['inscritos'], $g['aprobados']];
+        }
+
+        return $this->csvFilas('estadisticas.csv', $filas);
+    }
+
     /** Docentes por grupos (cupo, aprobados, %) + ranking de docentes por % aprobados. */
     public function docentesPorGrupo(): JsonResponse
     {
         return response()->json(['data' => $this->reportes->docentesPorGrupo()]);
+    }
+
+    public function docentesCsv(): StreamedResponse
+    {
+        $ranking = $this->reportes->docentesPorGrupo()['ranking'];
+
+        $filas = [];
+        $pos = 1;
+        foreach ($ranking as $d) {
+            $filas[] = [$pos++, $d['nombre'], $d['profesion'], $d['grupos'], $d['inscritos'], $d['aprobados'], $d['porcentaje']];
+        }
+
+        return $this->csv('docentes_ranking.csv',
+            ['#', 'Docente', 'Profesión', 'Grupos', 'Inscritos', 'Aprobados', '% aprobados'],
+            $filas,
+        );
     }
 
     /** Rendimiento académico comparado entre gestiones. */
@@ -120,6 +180,14 @@ class ReporteController extends Controller
         return $id;
     }
 
+    /** Normaliza el filtro de la lista de postulantes. */
+    private function filtroLista(Request $request): string
+    {
+        $filtro = $request->string('filtro')->toString() ?: 'todos';
+
+        return in_array($filtro, ['todos', 'aprobados', 'reprobados'], true) ? $filtro : 'todos';
+    }
+
     /** Genera una descarga CSV (UTF-8 con BOM para Excel). */
     private function csv(string $nombre, array $encabezados, array $filas): StreamedResponse
     {
@@ -127,6 +195,26 @@ class ReporteController extends Controller
             $salida = fopen('php://output', 'w');
             fwrite($salida, "\xEF\xBB\xBF"); // BOM UTF-8
             fputcsv($salida, $encabezados);
+            foreach ($filas as $fila) {
+                fputcsv($salida, $fila);
+            }
+            fclose($salida);
+        }, $nombre, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * CSV de filas heterogéneas (sin encabezado fijo), para reportes con varias
+     * secciones como las estadísticas.
+     *
+     * @param  array<int,array<int,mixed>>  $filas
+     */
+    private function csvFilas(string $nombre, array $filas): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($filas) {
+            $salida = fopen('php://output', 'w');
+            fwrite($salida, "\xEF\xBB\xBF"); // BOM UTF-8
             foreach ($filas as $fila) {
                 fputcsv($salida, $fila);
             }

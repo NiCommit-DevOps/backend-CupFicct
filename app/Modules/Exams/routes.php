@@ -48,8 +48,11 @@ Route::middleware('auth:api')->group(function () {
         Route::get('reportes/certificados', [ReporteController::class, 'certificados']);
         // Reportes obligatorios adicionales (lista/aprobados/reprobados, estadísticas, docentes por grupo).
         Route::get('reportes/lista', [ReporteController::class, 'lista']);
+        Route::get('reportes/lista/csv', [ReporteController::class, 'listaCsv']);
         Route::get('reportes/estadisticas', [ReporteController::class, 'estadisticas']);
+        Route::get('reportes/estadisticas/csv', [ReporteController::class, 'estadisticasCsv']);
         Route::get('reportes/docentes-grupos', [ReporteController::class, 'docentesPorGrupo']);
+        Route::get('reportes/docentes-grupos/csv', [ReporteController::class, 'docentesCsv']);
         // CU12 — Rendimiento académico comparado entre gestiones.
         Route::get('reportes/comparativa-gestiones', [ReporteController::class, 'comparativaGestiones']);
         Route::get('reportes/comparativa-gestiones/csv', [ReporteController::class, 'comparativaGestionesCsv']);
