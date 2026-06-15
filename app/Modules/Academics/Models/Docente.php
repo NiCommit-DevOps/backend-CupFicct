@@ -4,10 +4,12 @@ namespace App\Modules\Academics\Models;
 
 use App\Modules\Access\Models\Usuario;
 use App\Modules\Administrative\Models\Convocatoria;
+use App\Modules\Exams\Models\Carrera;
 use App\Modules\Exams\Models\Materia;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Docente extends Model
 {
@@ -46,11 +48,30 @@ class Docente extends Model
     }
 
     /**
-     * Materias que el docente está calificado para dictar (de 1 a muchas).
+     * Asignaciones del docente: cada fila es una materia (área) que dicta dentro
+     * de una carrera. Agrupadas por carrera forman su contratación (CU10).
+     */
+    public function asignaciones(): HasMany
+    {
+        return $this->hasMany(DocenteCarreraMateria::class, 'id_docente', 'id_docente');
+    }
+
+    /**
+     * Materias (áreas) que el docente dicta, distintas entre todas sus carreras.
      */
     public function materias(): BelongsToMany
     {
-        return $this->belongsToMany(Materia::class, 'docente_materia', 'id_docente', 'id_materia');
+        return $this->belongsToMany(Materia::class, 'docente_carrera_materia', 'id_docente', 'id_materia')
+            ->distinct();
+    }
+
+    /**
+     * Carreras en las que el docente dicta (distintas).
+     */
+    public function carreras(): BelongsToMany
+    {
+        return $this->belongsToMany(Carrera::class, 'docente_carrera_materia', 'id_docente', 'id_carrera')
+            ->distinct();
     }
 
     /**

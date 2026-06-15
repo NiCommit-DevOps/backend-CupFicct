@@ -34,9 +34,11 @@ class StoreDocenteRequest extends FormRequest
             'tiene_maestria' => ['required', 'accepted'],
             'tiene_diplomado' => ['required', 'accepted'],
 
-            // Materias que el docente dicta (de 1 a muchas).
-            'materias' => ['nullable', 'array'],
-            'materias.*' => ['integer', 'exists:materia,id_materia'],
+            // Contratación por carrera: cada carrera con sus materias (áreas).
+            'asignaciones' => ['nullable', 'array'],
+            'asignaciones.*.id_carrera' => ['required', 'integer', 'exists:carrera,id_carrera'],
+            'asignaciones.*.materias' => ['required', 'array', 'min:1'],
+            'asignaciones.*.materias.*' => ['integer', 'exists:materia,id_materia'],
 
             // Convocatorias (procesos) en las que participa el docente.
             'convocatorias' => ['nullable', 'array'],
@@ -54,6 +56,9 @@ class StoreDocenteRequest extends FormRequest
             'profesion.required' => 'La profesión es obligatoria: solo se contrata a profesionales del área.',
             'tiene_maestria.accepted' => 'El docente debe contar con maestría para ser contratado.',
             'tiene_diplomado.accepted' => 'El docente debe contar con diplomado en educación superior para ser contratado.',
+            'asignaciones.*.id_carrera.required' => 'Cada asignación debe indicar una carrera.',
+            'asignaciones.*.materias.required' => 'Cada carrera debe tener al menos un área (materia).',
+            'asignaciones.*.materias.min' => 'Cada carrera debe tener al menos un área (materia).',
             'grupos.max' => 'Un docente puede ser asignado a un máximo de 4 grupos.',
         ];
     }

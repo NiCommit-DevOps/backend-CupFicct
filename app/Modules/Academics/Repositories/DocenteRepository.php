@@ -17,7 +17,7 @@ class DocenteRepository
         $idConvocatoria = $filtros['id_convocatoria'] ?? null;
 
         return Docente::query()
-            ->with(['usuario.rol', 'materias', 'convocatorias', 'grupos'])
+            ->with(['usuario.rol', 'asignaciones.carrera', 'asignaciones.materia', 'convocatorias', 'grupos'])
             ->when($buscar, function ($query, $buscar) {
                 $query->whereHas('usuario', function ($q) use ($buscar) {
                     $q->where('nombres', 'ILIKE', "%{$buscar}%")
@@ -40,6 +40,6 @@ class DocenteRepository
 
     public function find(int $id): ?Docente
     {
-        return Docente::with(['usuario.rol', 'materias', 'convocatorias', 'grupos'])->find($id);
+        return Docente::with(['usuario.rol', 'asignaciones.carrera', 'asignaciones.materia', 'convocatorias', 'grupos'])->find($id);
     }
 }

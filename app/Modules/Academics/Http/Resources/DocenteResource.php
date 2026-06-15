@@ -3,7 +3,6 @@
 namespace App\Modules\Academics\Http\Resources;
 
 use App\Modules\Access\Http\Resources\UsuarioResource;
-use App\Modules\Exams\Http\Resources\MateriaResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,7 +18,24 @@ class DocenteResource extends JsonResource
             'tiene_maestria' => $this->tiene_maestria,
             'tiene_diplomado' => $this->tiene_diplomado,
             'usuario' => new UsuarioResource($this->whenLoaded('usuario')),
-            'materias' => MateriaResource::collection($this->whenLoaded('materias')),
+            // Contratación agrupada por carrera: cada carrera con sus materias (áreas).
+            'asignaciones' => $this->whenLoaded('asignaciones', fn () => $this->asignaciones
+                ->groupBy('id_carrera')
+                ->map(fn ($filas) => [
+                    'id_carrera' => (int) $filas->first()->id_carrera,
+                    'carrera' => $filas->first()->carrera?->nombre,
+                    'materias' => $filas->map(fn ($f) => [
+                        'id_materia' => (int) $f->id_materia,
+                        'nombre' => $f->materia?->nombre,
+                    ])->values(),
+                ])->values()),
+            // Lista plana de materias distintas (para tabla/resumen).
+            'materias' => $this->whenLoaded('asignaciones', fn () => $this->asignaciones
+                ->unique('id_materia')
+                ->map(fn ($f) => [
+                    'id_materia' => (int) $f->id_materia,
+                    'nombre' => $f->materia?->nombre,
+                ])->values()),
             'convocatorias' => $this->whenLoaded('convocatorias', fn () => $this->convocatorias->map(fn ($c) => [
                 'id_convocatoria' => $c->id_convocatoria,
                 'nombre' => $c->nombre,

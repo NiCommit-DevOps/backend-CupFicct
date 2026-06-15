@@ -68,12 +68,43 @@ class DocenteService
                 Arr::only($data, self::CAMPOS_DOCENTE),
             );
 
-            $docente->materias()->sync($data['materias'] ?? []);
+            $this->sincronizarAsignaciones($docente, $data['asignaciones'] ?? []);
             $docente->convocatorias()->sync($data['convocatorias'] ?? []);
             $this->sincronizarGrupos($docente, $data['grupos'] ?? []);
 
             return $this->obtener($docente->id_docente);
         });
+    }
+
+    /**
+     * CU10 — Re-sincroniza la contratación del docente: por cada carrera, las
+     * materias (áreas) que dicta. Guarda la tripleta docente–carrera–materia.
+     *
+     * @param  array<int,array{id_carrera?:mixed,materias?:array}>  $asignaciones
+     */
+    private function sincronizarAsignaciones(Docente $docente, array $asignaciones): void
+    {
+        DB::table('docente_carrera_materia')->where('id_docente', $docente->id_docente)->delete();
+
+        $filas = [];
+        foreach ($asignaciones as $asignacion) {
+            $idCarrera = (int) ($asignacion['id_carrera'] ?? 0);
+            if ($idCarrera <= 0) {
+                continue;
+            }
+            $materias = array_unique(array_map('intval', $asignacion['materias'] ?? []));
+            foreach ($materias as $idMateria) {
+                $filas[] = [
+                    'id_docente' => $docente->id_docente,
+                    'id_carrera' => $idCarrera,
+                    'id_materia' => $idMateria,
+                ];
+            }
+        }
+
+        if ($filas !== []) {
+            DB::table('docente_carrera_materia')->insert($filas);
+        }
     }
 
     /**
@@ -125,8 +156,8 @@ class DocenteService
             $docente->fill(Arr::only($data, self::CAMPOS_DOCENTE));
             $docente->save();
 
-            if (array_key_exists('materias', $data)) {
-                $docente->materias()->sync($data['materias'] ?? []);
+            if (array_key_exists('asignaciones', $data)) {
+                $this->sincronizarAsignaciones($docente, $data['asignaciones'] ?? []);
             }
 
             if (array_key_exists('convocatorias', $data)) {
