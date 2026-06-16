@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Modules\Exams\Http\Controllers;
+namespace App\Modules\Reports\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Exams\Services\ReporteService;
+use App\Modules\Reports\Services\ReporteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;

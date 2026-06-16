@@ -6,6 +6,7 @@ use App\Modules\Administrative\AdministrativeModuleServiceProvider;
 use App\Modules\Academics\AcademicsModuleServiceProvider;
 use App\Modules\Exams\ExamsModuleServiceProvider;
 use App\Modules\Registration\RegistrationModuleServiceProvider;
+use App\Modules\Reports\ReportsModuleServiceProvider;
 
 return [
     AppServiceProvider::class,
@@ -14,4 +15,5 @@ return [
     AcademicsModuleServiceProvider::class,
     ExamsModuleServiceProvider::class,
     RegistrationModuleServiceProvider::class,
+    ReportsModuleServiceProvider::class,
 ];

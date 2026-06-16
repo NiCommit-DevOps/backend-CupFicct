@@ -6,7 +6,6 @@ use App\Modules\Exams\Http\Controllers\ExamenAlumnoController;
 use App\Modules\Exams\Http\Controllers\HistorialAcademicoController;
 use App\Modules\Exams\Http\Controllers\HorarioController;
 use App\Modules\Exams\Http\Controllers\MateriaController;
-use App\Modules\Exams\Http\Controllers\ReporteController;
 use App\Modules\Exams\Http\Controllers\ResultadoExamenController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,24 +38,7 @@ Route::middleware('auth:api')->group(function () {
     // CU16 — Historial académico (solo lectura, gestiones concluidas).
     Route::get('historial', [HistorialAcademicoController::class, 'buscar'])->middleware('permiso:historial.index');
 
-    // CU12 — Reportes oficiales (acta, padrón, certificados) + descargas CSV.
-    Route::middleware('permiso:reportes.index')->group(function () {
-        Route::get('reportes/acta', [ReporteController::class, 'acta']);
-        Route::get('reportes/acta/csv', [ReporteController::class, 'actaCsv']);
-        Route::get('reportes/padron', [ReporteController::class, 'padron']);
-        Route::get('reportes/padron/csv', [ReporteController::class, 'padronCsv']);
-        Route::get('reportes/certificados', [ReporteController::class, 'certificados']);
-        // Reportes obligatorios adicionales (lista/aprobados/reprobados, estadísticas, docentes por grupo).
-        Route::get('reportes/lista', [ReporteController::class, 'lista']);
-        Route::get('reportes/lista/csv', [ReporteController::class, 'listaCsv']);
-        Route::get('reportes/estadisticas', [ReporteController::class, 'estadisticas']);
-        Route::get('reportes/estadisticas/csv', [ReporteController::class, 'estadisticasCsv']);
-        Route::get('reportes/docentes-grupos', [ReporteController::class, 'docentesPorGrupo']);
-        Route::get('reportes/docentes-grupos/csv', [ReporteController::class, 'docentesCsv']);
-        // CU12 — Rendimiento académico comparado entre gestiones.
-        Route::get('reportes/comparativa-gestiones', [ReporteController::class, 'comparativaGestiones']);
-        Route::get('reportes/comparativa-gestiones/csv', [ReporteController::class, 'comparativaGestionesCsv']);
-    });
+    // CU12 — Reportes: movidos a su propio módulo (App\Modules\Reports).
 
     // CU07 — Corte de admisión por cupos.
     Route::get('convocatorias/{convocatoria}/corte', [CorteAdmisionController::class, 'estado'])->middleware('permiso:admision.index');

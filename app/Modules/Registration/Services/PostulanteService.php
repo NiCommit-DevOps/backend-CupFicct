@@ -378,7 +378,6 @@ class PostulanteService
                 );
             }
         }
-
         return $pendientes->count();
     }
 

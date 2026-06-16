@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Exams\Services;
+namespace App\Modules\Reports\Services;
 
 use App\Modules\Academics\Models\Grupo;
 use App\Modules\Administrative\Models\Convocatoria;
